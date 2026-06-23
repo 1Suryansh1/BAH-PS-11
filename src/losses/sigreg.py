@@ -5,14 +5,10 @@ from torch import distributed as dist
 # Utility for distributed reduction if needed
 def all_reduce(x, op="AVG"):
     if dist.is_available() and dist.is_initialized():
-        op_name = op.upper()
-        if op_name == "AVG":
-            dist.all_reduce(x, op=dist.ReduceOp.SUM)
-            return x / dist.get_world_size()
-        else:
-            dist_op = getattr(dist.ReduceOp, op_name, dist.ReduceOp.SUM)
-            dist.all_reduce(x, op=dist_op)
-            return x
+        from torch.distributed.nn import all_reduce as functional_all_reduce
+        from torch.distributed.nn import ReduceOp
+        op = ReduceOp.__dict__[op.upper()]
+        return functional_all_reduce(x, op)
     else:
         return x
 
@@ -125,9 +121,6 @@ def sigreg_loss(embeddings):
     return loss_fn(embeddings)
 
 def total_sigreg_loss(model_output: dict):
-    if 'l_sigreg' in model_output:
-        return model_output['l_sigreg']
-        
     l1 = sigreg_loss(model_output['r_cross_a'])
     l2 = sigreg_loss(model_output['r_cross_b'])
     l3 = sigreg_loss(model_output['r_uni_a'])

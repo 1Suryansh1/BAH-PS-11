@@ -17,26 +17,26 @@ class DSRSIDDataset(Dataset):
         return len(self.samples)
 
     def normalize_pan(self, pan_raw):
-        # Z-score per channel
-        # Placeholder stats
-        mean = 100.0
-        std = 50.0
-        return (pan_raw - mean) / std
+        # Scale to [0, 1] if raw is 0-255
+        pan = pan_raw / 255.0 if pan_raw.max() > 1.0 else pan_raw
+        mean = 0.5
+        std = 0.25
+        return (pan - mean) / std
 
     def normalize_ms(self, ms_raw):
-        # Divide by max range, then z-score
-        # Assuming uint16 for now
-        ms = ms_raw / 10000.0
-        mean = torch.tensor([0.1]*4).view(4, 1, 1)
-        std = torch.tensor([0.05]*4).view(4, 1, 1)
+        # Scale to [0, 1] if raw is 0-255
+        ms = ms_raw / 255.0 if ms_raw.max() > 1.0 else ms_raw
+        # B, G, R, NIR bands
+        mean = torch.tensor([0.485, 0.456, 0.406, 0.5]).view(4, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225, 0.25]).view(4, 1, 1)
         return (ms - mean) / std
 
     def __getitem__(self, idx):
         sample_id = self.samples[idx]["sample_id"]
         
-        # Dummy data
+        # Dummy data in real-world ranges (RGB/NIR [0, 255], PAN [0, 255])
         pan_raw = torch.rand(1, 256, 256) * 255.0
-        ms_raw = torch.rand(4, 64, 64) * 10000.0
+        ms_raw = torch.rand(4, 64, 64) * 255.0
         
         # Resize to matching resolution
         pan_resized = self.resize(pan_raw)
@@ -45,23 +45,19 @@ class DSRSIDDataset(Dataset):
         pan_norm = self.normalize_pan(pan_resized)
         ms_norm = self.normalize_ms(ms_resized)
         
+        # Metadata: [lon, lat, time_doy, patch_area]
+        time_doy = torch.randint(1, 366, ()).item()
+        pan_meta = torch.tensor([120.1, 36.3, float(time_doy), 0.262], dtype=torch.float32)
+        ms_meta = torch.tensor([120.1, 36.3, float(time_doy), 0.262], dtype=torch.float32)
+        
         # Single label (8 classes)
         label = torch.tensor(torch.randint(0, 8, ()).item(), dtype=torch.long)
-        
-        # Generate realistic coordinates and seasonal DOY
-        lon, lat = 78.96, 20.59
-        doy_pan = float(torch.randint(1, 366, ()).item())
-        doy_ms = float(torch.randint(1, 366, ()).item())
-        
-        meta_pan = torch.tensor([lon, lat, doy_pan, 1.44], dtype=torch.float32)
-        meta_ms = torch.tensor([lon, lat, doy_ms, 1.44], dtype=torch.float32)
         
         return {
             'pan': pan_norm,
             'ms': ms_norm,
+            'pan_meta': pan_meta,
+            'ms_meta': ms_meta,
             'label': label,
-            'sample_id': sample_id,
-            'meta_pan': meta_pan,
-            'meta_ms': meta_ms
+            'sample_id': sample_id
         }
-

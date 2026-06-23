@@ -22,9 +22,9 @@ def demo_retrieval():
     # 2. Simulate Data Extraction
     print("Extracting embeddings for database (N=100)...")
     db_images = torch.randn(100, 3, 224, 224)
-    # CopFM wavelengths/bandwidths config (in nanometers)
-    wl = [620.0, 532.0, 450.0]
-    bw = [100.0, 90.0, 90.0]
+    # CopFM wavelengths/bandwidths config
+    wl = [0.4, 0.5, 0.6]
+    bw = [0.1, 0.1, 0.1]
     
     with torch.no_grad():
         db_embeddings = model.get_retrieval_embedding(db_images, wl, bw, mode='cross').numpy()

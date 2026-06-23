@@ -66,28 +66,20 @@ class CrossModalPredictor(nn.Module):
                 mask: torch.Tensor):            # (B, N_all) bool — B's masked positions
         
         B, N_vis, D = context_tokens.shape
-        N_all = mask.shape[1]
         
         # Project down context to serve as cross-attention keys/values
         c = self.predictor_proj(context_tokens) # (B, N_vis, proj_dim)
         
-        # Interpolate predictor_pos_embed dynamically if resolution is larger
-        if N_all > self.predictor_pos_embed.shape[1]:
-            h_max = int(self.predictor_pos_embed.shape[1] ** 0.5)
-            h_curr = int(N_all ** 0.5)
-            pos_grid = self.predictor_pos_embed.transpose(1, 2).reshape(1, -1, h_max, h_max)
-            pos_grid = F.interpolate(pos_grid, size=(h_curr, h_curr), mode='bicubic', align_corners=False)
-            pos_embed = pos_grid.reshape(1, -1, N_all).transpose(1, 2) # (1, N_all, proj_dim)
-        else:
-            pos_embed = self.predictor_pos_embed[:, :N_all, :]
-            
-        # Vectorized extraction of masked position embeddings
-        pos_emb_expanded = pos_embed.expand(B, -1, -1) # (B, N_all, proj_dim)
-        pos_emb_masked = pos_emb_expanded[mask].view(B, -1, pos_embed.shape[-1]) # (B, N_masked, proj_dim)
+        # Create queries from mask tokens + pos embedding
+        # We need to collect pos embeddings for the masked positions
+        queries = []
+        for i in range(B):
+            masked_pos = torch.where(mask[i])[0]
+            pos_emb = self.predictor_pos_embed[0, masked_pos, :]
+            q_i = self.mask_token[0].expand(len(masked_pos), -1) + pos_emb
+            queries.append(q_i)
         
-        # Vectorized creation of mask queries
-        mask_tokens = self.mask_token.expand(B, pos_emb_masked.shape[1], -1) # (B, N_masked, proj_dim)
-        queries = mask_tokens + pos_emb_masked
+        queries = torch.stack(queries, dim=0) # (B, N_masked, proj_dim)
         
         # Forward through blocks
         for block in self.blocks:

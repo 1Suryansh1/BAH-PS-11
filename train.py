@@ -79,10 +79,15 @@ def main(config_path):
     wl_a, bw_a = get_wavelengths(config['data']['modality_a'])
     wl_b, bw_b = get_wavelengths(config['data']['modality_b'])
     
-    from src.utils.key_mapping import get_modality_key
-    dataset_name = config['data']['dataset_name']
-    mod_a_key = get_modality_key(dataset_name, config['data']['modality_a'])
-    mod_b_key = get_modality_key(dataset_name, config['data']['modality_b'])
+    # Helper to get the correct keys from dummy loaders
+    mod_a_key = config['data']['modality_a'].lower()
+    mod_b_key = config['data']['modality_b'].lower()
+    if 's1' in mod_a_key or 's2' in mod_a_key:
+        mod_a_key, mod_b_key = 's1', 's2'
+    elif 'rgb' in mod_a_key or 'sar' in mod_a_key:
+        mod_a_key, mod_b_key = 'rgb', 'sar'
+    elif 'pan' in mod_a_key or 'ms' in mod_a_key:
+        mod_a_key, mod_b_key = 'pan', 'ms'
         
     os.makedirs('./checkpoints', exist_ok=True)
     
@@ -97,20 +102,21 @@ def main(config_path):
             img_a = batch[mod_a_key].to(device)
             img_b = batch[mod_b_key].to(device)
             
+            meta_a_key = mod_a_key + '_meta'
+            meta_b_key = mod_b_key + '_meta'
+            meta_info_a = batch[meta_a_key].to(device) if meta_a_key in batch else None
+            meta_info_b = batch[meta_b_key].to(device) if meta_b_key in batch else None
+            
             H, W = img_a.shape[-2], img_a.shape[-1]
             grid_h, grid_w = H // 16, W // 16
             
             mask_a = torch.stack([random_block_mask(grid_h, grid_w, config['model']['mask_ratio'], device=device) for _ in range(B)])
             mask_b = torch.stack([random_block_mask(grid_h, grid_w, config['model']['mask_ratio'], device=device) for _ in range(B)])
             
-            meta_a = batch.get('meta_' + mod_a_key, None)
-            if meta_a is not None:
-                meta_a = meta_a.to(device)
-            meta_b = batch.get('meta_' + mod_b_key, None)
-            if meta_b is not None:
-                meta_b = meta_b.to(device)
-                
-            output = model.forward_train(img_a, img_b, wl_a, wl_b, bw_a, bw_b, mask_a, mask_b, meta_a=meta_a, meta_b=meta_b)
+            output = model.forward_train(
+                img_a, img_b, wl_a, wl_b, bw_a, bw_b, mask_a, mask_b,
+                meta_info_a=meta_info_a, meta_info_b=meta_info_b
+            )
             
             losses = compute_total_loss(output, **config['training']['loss_weights'])
             
@@ -118,7 +124,6 @@ def main(config_path):
             losses['total'].backward()
             torch.nn.utils.clip_grad_norm_(trainable_params, 1.0)
             optimizer.step()
-            model.update_target_ema()
             
             for k in epoch_losses:
                 epoch_losses[k] += losses[k] if isinstance(losses[k], float) else losses[k].item()
@@ -144,20 +149,21 @@ def main(config_path):
                 img_a = batch[mod_a_key].to(device)
                 img_b = batch[mod_b_key].to(device)
                 
+                meta_a_key = mod_a_key + '_meta'
+                meta_b_key = mod_b_key + '_meta'
+                meta_info_a = batch[meta_a_key].to(device) if meta_a_key in batch else None
+                meta_info_b = batch[meta_b_key].to(device) if meta_b_key in batch else None
+                
                 H, W = img_a.shape[-2], img_a.shape[-1]
                 grid_h, grid_w = H // 16, W // 16
                 
                 mask_a = torch.stack([random_block_mask(grid_h, grid_w, config['model']['mask_ratio'], device=device) for _ in range(B)])
                 mask_b = torch.stack([random_block_mask(grid_h, grid_w, config['model']['mask_ratio'], device=device) for _ in range(B)])
                 
-                meta_a = batch.get('meta_' + mod_a_key, None)
-                if meta_a is not None:
-                    meta_a = meta_a.to(device)
-                meta_b = batch.get('meta_' + mod_b_key, None)
-                if meta_b is not None:
-                    meta_b = meta_b.to(device)
-                
-                output = model.forward_train(img_a, img_b, wl_a, wl_b, bw_a, bw_b, mask_a, mask_b, meta_a=meta_a, meta_b=meta_b)
+                output = model.forward_train(
+                    img_a, img_b, wl_a, wl_b, bw_a, bw_b, mask_a, mask_b,
+                    meta_info_a=meta_info_a, meta_info_b=meta_info_b
+                )
                 
                 losses = compute_total_loss(output, **config['training']['loss_weights'])
                 
