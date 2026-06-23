@@ -118,7 +118,6 @@ def main(config_path):
             losses['total'].backward()
             torch.nn.utils.clip_grad_norm_(trainable_params, 1.0)
             optimizer.step()
-            model.update_target_ema()
             
             for k in epoch_losses:
                 epoch_losses[k] += losses[k] if isinstance(losses[k], float) else losses[k].item()

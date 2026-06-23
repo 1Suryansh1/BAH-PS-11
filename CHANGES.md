@@ -34,14 +34,13 @@ This document lists all the bug fixes, structural improvements, and dataset upda
   * Persistent instantiation of `SIGRegLoss` modules in `CopFMRetrieval`'s constructor. This preserves the random generator's `global_step` state across training iterations, ensuring varying random projection angles instead of resetting the seed every step.
   * Corrected test script mock dictionary keys to match `r_cross_a`, `r_cross_b`, `r_uni_a`, and `r_uni_b`.
 
-## 5. Architectural JEPA Shortcut Fix & EMA Target Encoder
+## 5. Architectural JEPA Shortcut Fix & Non-EMA Target Path
 * **Files**: 
   * [src/models/backbone.py](file:///c:/Users/SHAHZEB%20ALI/OneDrive/Desktop/isro_bah/copfm_retrieval/src/models/backbone.py)
   * [src/models/copfm_retrieval.py](file:///c:/Users/SHAHZEB%20ALI/OneDrive/Desktop/isro_bah/copfm_retrieval/src/models/copfm_retrieval.py)
-  * [train.py](file:///c:/Users/SHAHZEB%20ALI/OneDrive/Desktop/isro_bah/copfm_retrieval/train.py)
 * **Fixes**:
   * Modified the backbone forward pass to accept an optional `mask`. When masking is enabled, it slices patch and position embeddings *before* running ViT blocks so that the context encoder only processes visible patches. This prevents information leakage through self-attention layers.
-  * Added a separate target encoder (`target_backbone`) updated via Exponential Moving Average (EMA).
+  * Encodes the target path using the active backbone under `torch.no_grad()` with `.detach()`. This completely removes EMA updates and parameter duplicates, avoiding heuristics, reducing GPU memory footprint, and minimizing latency, while SIGReg mathematically prevents representation collapse.
   * Cleared forward hook activation tokens at the end of the pass to prevent GPU memory leaks.
 
 ## 6. Vectorized Masking

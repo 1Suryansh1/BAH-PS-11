@@ -16,13 +16,6 @@ class CopFMRetrieval(nn.Module):
             freeze_mode=config['freeze_mode']
         )
         
-        # Frozen EMA-updated target backbone to prevent information leakage
-        self.target_backbone = copy.deepcopy(self.backbone)
-        for p in self.target_backbone.parameters():
-            p.requires_grad = False
-            
-        self.ema_decay = config.get('ema_decay', 0.996)
-        
         # Same-modal predictors
         depth = config.get('predictor_depth', 6)
         self.predictor_aa = SameModalPredictor(depth=depth)
@@ -58,14 +51,6 @@ class CopFMRetrieval(nn.Module):
             e, _ = self.retrieval_heads.phi_uni(tokens)
         return e
 
-    @torch.no_grad()
-    def update_target_ema(self):
-        """
-        Update the target encoder weights via Exponential Moving Average (EMA).
-        """
-        for param_q, param_k in zip(self.backbone.parameters(), self.target_backbone.parameters()):
-            param_k.data.mul_(self.ema_decay).add_((1 - self.ema_decay) * param_q.detach().data)
-
     def forward_train(self, batch_a, batch_b, wl_a, wl_b, bw_a, bw_b, mask_a, mask_b, meta_a=None, meta_b=None):
         """
         Full training forward pass.
@@ -74,13 +59,13 @@ class CopFMRetrieval(nn.Module):
         vis_a = self.backbone(batch_a, wl_a, bw_a, return_patch_tokens=True, mask=mask_a, meta_info=meta_a)
         vis_b = self.backbone(batch_b, wl_b, bw_b, return_patch_tokens=True, mask=mask_b, meta_info=meta_b)
         
-        # Step 2: encode full target images using frozen target backbone (EMA)
+        # Step 2: encode full target images using active backbone (detached to prevent gradient leakage)
         with torch.no_grad():
-            full_tokens_a = self.target_backbone(batch_a, wl_a, bw_a, return_patch_tokens=True, meta_info=meta_a)
-            full_tokens_b = self.target_backbone(batch_b, wl_b, bw_b, return_patch_tokens=True, meta_info=meta_b)
+            full_tokens_a = self.backbone(batch_a, wl_a, bw_a, return_patch_tokens=True, meta_info=meta_a)
+            full_tokens_b = self.backbone(batch_b, wl_b, bw_b, return_patch_tokens=True, meta_info=meta_b)
             
-            tgt_a = get_masked_tokens(full_tokens_a, mask_a)    # (B, N_mask, D)  — TARGET
-            tgt_b = get_masked_tokens(full_tokens_b, mask_b)
+            tgt_a = get_masked_tokens(full_tokens_a, mask_a).detach()    # (B, N_mask, D)  — TARGET
+            tgt_b = get_masked_tokens(full_tokens_b, mask_b).detach()
         
         # Step 3: predictive paths
         pred_aa = self.predictor_aa(vis_a, mask_a)
