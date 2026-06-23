@@ -66,20 +66,21 @@ class CrossModalPredictor(nn.Module):
                 mask: torch.Tensor):            # (B, N_all) bool — B's masked positions
         
         B, N_vis, D = context_tokens.shape
+        N_all = mask.shape[1]
         
         # Project down context to serve as cross-attention keys/values
         c = self.predictor_proj(context_tokens) # (B, N_vis, proj_dim)
         
-        # Create queries from mask tokens + pos embedding
-        # We need to collect pos embeddings for the masked positions
-        queries = []
-        for i in range(B):
-            masked_pos = torch.where(mask[i])[0]
-            pos_emb = self.predictor_pos_embed[0, masked_pos, :]
-            q_i = self.mask_token[0].expand(len(masked_pos), -1) + pos_emb
-            queries.append(q_i)
+        # Static positional embeddings, no hallucinated interpolation (from Suryansh)
+        pos_embed = self.predictor_pos_embed[:, :N_all, :]
+            
+        # Vectorized extraction of masked position embeddings (from Shahzeb/Aarushi)
+        pos_emb_expanded = pos_embed.expand(B, -1, -1) # (B, N_all, proj_dim)
+        pos_emb_masked = pos_emb_expanded[mask].view(B, -1, pos_embed.shape[-1]) # (B, N_masked, proj_dim)
         
-        queries = torch.stack(queries, dim=0) # (B, N_masked, proj_dim)
+        # Vectorized creation of mask queries
+        mask_tokens = self.mask_token.expand(B, pos_emb_masked.shape[1], -1) # (B, N_masked, proj_dim)
+        queries = mask_tokens + pos_emb_masked
         
         # Forward through blocks
         for block in self.blocks:

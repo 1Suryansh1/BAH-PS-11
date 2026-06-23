@@ -47,19 +47,22 @@ class CBRSIRDataset(Dataset):
         rgb_norm = self.normalize_rgb(rgb_resized)
         sar_norm = self.normalize_sar(sar_resized)
         
-        # Metadata: [lon, lat, time_doy, patch_area]
-        time_doy = torch.randint(1, 366, ()).item()
-        rgb_meta = torch.tensor([113.9, 22.5, float(time_doy), 0.0655], dtype=torch.float32)
-        sar_meta = torch.tensor([113.9, 22.5, float(time_doy), 0.0655], dtype=torch.float32)
-        
         # Single label (10 classes)
         label = torch.tensor(torch.randint(0, 10, ()).item(), dtype=torch.long)
+        
+        # Generate realistic coordinates for India (ISRO context) and seasonal doy
+        lon, lat = 78.96, 20.59
+        doy_rgb = float(torch.randint(1, 366, ()).item())
+        doy_sar = float(torch.randint(1, 366, ()).item())
+        
+        meta_rgb = torch.tensor([lon, lat, doy_rgb, 1.44], dtype=torch.float32)
+        meta_sar = torch.tensor([lon, lat, doy_sar, 1.44], dtype=torch.float32)
         
         return {
             'rgb': rgb_norm,
             'sar': sar_norm,
-            'rgb_meta': rgb_meta,
-            'sar_meta': sar_meta,
             'label': label,
-            'sample_id': sample_id
+            'sample_id': sample_id,
+            'meta_rgb': meta_rgb,
+            'meta_sar': meta_sar
         }

@@ -30,13 +30,7 @@ def get_visible_tokens(tokens, mask):
         visible_tokens: (B, N_visible, D) — only unmasked tokens
     """
     B, N, D = tokens.shape
-    visible_tokens = []
-    for i in range(B):
-        # mask[i] is True for masked, so ~mask[i] is visible
-        vis = tokens[i, ~mask[i], :]
-        visible_tokens.append(vis)
-    # Stack back to (B, N_visible, D) assuming same mask count per batch element
-    return torch.stack(visible_tokens, dim=0)
+    return tokens[~mask].view(B, -1, D)
 
 def get_masked_tokens(tokens, mask):
     """
@@ -47,9 +41,4 @@ def get_masked_tokens(tokens, mask):
         masked_tokens: (B, N_masked, D) — only masked tokens
     """
     B, N, D = tokens.shape
-    masked_tokens = []
-    for i in range(B):
-        tgt = tokens[i, mask[i], :]
-        masked_tokens.append(tgt)
-    # Stack back to (B, N_masked, D) assuming same mask count per batch element
-    return torch.stack(masked_tokens, dim=0)
+    return tokens[mask].view(B, -1, D)

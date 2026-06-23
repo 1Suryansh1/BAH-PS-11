@@ -5,57 +5,91 @@ import faiss
 from .metrics import compute_f1_at_k, compute_map, compute_precision_at_k
 from ..wavelengths import get_wavelengths
 
+from ..utils.key_mapping import get_modality_key
+
 def extract_all_embeddings(model, dataloader, modality: str, mode: str = 'cross', device='cpu'):
     model.eval()
-    all_embs, all_labels = [], []
+    all_embs, all_labels, all_ids = [], [], []
+    
+    # Infer dataset name
+    dataset_name = ""
+    if hasattr(dataloader.dataset, 'dataset_name'):
+        dataset_name = dataloader.dataset.dataset_name
+    else:
+        cls_name = dataloader.dataset.__class__.__name__
+        if "BEN14K" in cls_name:
+            dataset_name = "BigEarthNet"
+        elif "CBRSIR" in cls_name:
+            dataset_name = "CBRSIR"
+        elif "DSRSID" in cls_name:
+            dataset_name = "DSRSID"
+            
+    mod_key = get_modality_key(dataset_name, modality)
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc=f"Extracting {modality} embeddings"):
             wl, bw = get_wavelengths(modality)
-            mod_key = modality.lower()
-            if 's1' in mod_key or 's2' in mod_key:
-                img = batch[mod_key].to(device)
-            elif 'rgb' in mod_key or 'sar' in mod_key:
-                img = batch[mod_key].to(device)
-            elif 'pan' in mod_key or 'ms' in mod_key:
+            if mod_key in batch:
                 img = batch[mod_key].to(device)
             else:
                 img = batch['image'].to(device) # fallback
                 
-            meta_key = mod_key + '_meta'
-            meta_info = batch[meta_key].to(device) if meta_key in batch else None
-            
-            emb = model.get_retrieval_embedding(img, wl, bw, mode=mode, meta_info=meta_info)
+            emb = model.get_retrieval_embedding(img, wl, bw, mode=mode)
             all_embs.append(emb.cpu().numpy())
             all_labels.append(batch['label'].cpu().numpy())
             
+            id_key = 'pair_id' if 'pair_id' in batch else 'sample_id'
+            if id_key in batch:
+                all_ids.extend(batch[id_key])
+            else:
+                all_ids.extend([f"id_{len(all_ids)+j}" for j in range(len(img))])
+            
     embeddings = np.concatenate(all_embs, axis=0)
     labels = np.concatenate(all_labels, axis=0)
-    return embeddings, labels
+    return embeddings, labels, all_ids
 
 def evaluate_retrieval_direction(query_embs, query_labels,
                                   gallery_embs, gallery_labels,
-                                  ks=[5, 10], metric='f1', exclude_self=False):
+                                  ks=[5, 10], metric='f1',
+                                  query_ids=None, gallery_ids=None,
+                                  filter_self=False):
     D = query_embs.shape[1]
     
     query_embs = np.ascontiguousarray(query_embs, dtype=np.float32)
     gallery_embs = np.ascontiguousarray(gallery_embs, dtype=np.float32)
     
+    max_k = max(ks)
+    # If filtering self-matches, retrieve k+1 neighbors
+    fetch_k = max_k + 1 if filter_self else max_k
+    
     index = faiss.IndexFlatIP(D)
     index.add(gallery_embs)
     
-    if exclude_self:
-        # Search for one extra item in case the query itself is matched
-        distances, indices = index.search(query_embs, max(ks) + 1)
-        filtered_indices = []
-        for i, ret_idx in enumerate(indices):
-            # Exclude query itself (gallery index equal to query index i)
-            mask = ret_idx != i
-            filtered = ret_idx[mask]
-            filtered_indices.append(filtered[:max(ks)])
-        indices = np.stack(filtered_indices)
+    distances, indices = index.search(query_embs, fetch_k)
+    
+    # Pre-compute hash map for O(1) lookup
+    if filter_self and query_ids is not None and gallery_ids is not None:
+        gallery_id_to_idx = {gid: idx for idx, gid in enumerate(gallery_ids)}
     else:
-        distances, indices = index.search(query_embs, max(ks))
+        gallery_id_to_idx = None
+    
+    # Filter self-matches if enabled
+    filtered_indices = []
+    for i in range(len(query_embs)):
+        idx_i = indices[i]
+        if filter_self and gallery_id_to_idx is not None:
+            q_id = query_ids[i]
+            self_idx = gallery_id_to_idx.get(q_id)
+            if self_idx is not None:
+                mask = (idx_i != self_idx)
+                idx_i = idx_i[mask][:max_k]
+            else:
+                idx_i = idx_i[:max_k]
+        else:
+            idx_i = idx_i[:max_k]
+        filtered_indices.append(idx_i)
+        
+    indices = np.array(filtered_indices)
     
     total_relevant_list = []
     if metric == 'f1':

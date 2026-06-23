@@ -2,15 +2,22 @@ import torch
 import torch.nn as nn
 from torch import distributed as dist
 
+
 # Utility for distributed reduction if needed
 def all_reduce(x, op="AVG"):
     if dist.is_available() and dist.is_initialized():
         from torch.distributed.nn import all_reduce as functional_all_reduce
         from torch.distributed.nn import ReduceOp
-        op = ReduceOp.__dict__[op.upper()]
-        return functional_all_reduce(x, op)
+        op_name = op.upper()
+        if op_name == "AVG":
+            x_sum = functional_all_reduce(x, ReduceOp.SUM)
+            return x_sum / dist.get_world_size()
+        else:
+            dist_op = getattr(ReduceOp, op_name, ReduceOp.SUM)
+            return functional_all_reduce(x, dist_op)
     else:
         return x
+
 
 class EppsPulley(nn.Module):
     """
@@ -18,7 +25,7 @@ class EppsPulley(nn.Module):
     """
     def __init__(self, t_max: float = 3, n_points: int = 17, integration: str = "trapezoid"):
         super().__init__()
-        assert n_points % 2 == 1
+        assert n_points % 2 == 1, "n_points must be odd for trapezoid integration"
         self.integration = integration
         self.n_points = n_points
 
@@ -26,7 +33,7 @@ class EppsPulley(nn.Module):
         self.register_buffer("t", t)
         dt = t_max / (n_points - 1)
         weights = torch.full((n_points,), 2 * dt, dtype=torch.float32)
-        weights[[0, -1]] = dt  
+        weights[[0, -1]] = dt
         self.register_buffer("phi", self.t.square().mul_(0.5).neg_().exp_())
         self.register_buffer("weights", weights * self.phi)
 
@@ -37,8 +44,8 @@ class EppsPulley(nn.Module):
         cos_vals = torch.cos(x_t)
         sin_vals = torch.sin(x_t)
 
-        cos_mean = cos_vals.mean(-3)  
-        sin_mean = sin_vals.mean(-3)  
+        cos_mean = cos_vals.mean(-3)
+        sin_mean = sin_vals.mean(-3)
 
         cos_mean = all_reduce(cos_mean)
         sin_mean = all_reduce(sin_mean)
@@ -48,6 +55,7 @@ class EppsPulley(nn.Module):
         # Weighted integration
         world_size = dist.get_world_size() if (dist.is_available() and dist.is_initialized()) else 1
         return (err @ self.weights) * N * world_size
+
 
 class SlicingUnivariateTest(nn.Module):
     """
@@ -74,26 +82,26 @@ class SlicingUnivariateTest(nn.Module):
         with torch.no_grad():
             global_step_sync = all_reduce(self.global_step.clone(), op="MAX")
             seed = global_step_sync.item()
-            dev = dict(device=x.device)
 
             g = self._get_generator(x.device, seed)
 
             proj_shape = (x.size(-1), self.num_slices)
-            A = torch.randn(proj_shape, **dev, generator=g)
+            A = torch.randn(proj_shape, device=x.device, generator=g)
             A /= A.norm(p=2, dim=0)
             self.global_step.add_(1)
 
         stats = self.univariate_test(x @ A)
-        
+
         if self.clip_value is not None:
             stats[stats < self.clip_value] = 0
-            
+
         if self.reduction == "mean":
             return stats.mean()
         elif self.reduction == "sum":
             return stats.sum()
         else:
             return stats
+
 
 class SIGRegLoss(nn.Module):
     def __init__(self, num_slices=128):
@@ -105,25 +113,19 @@ class SIGRegLoss(nn.Module):
         )
 
     def forward(self, embeddings):
-        # Center embeddings for the normal distribution assumption
-        # Note: LeJEPA forces embeddings to be an isotropic Gaussian (mean 0, var 1)
-        mean = embeddings.mean(dim=0, keepdim=True)
-        std = embeddings.std(dim=0, unbiased=False, keepdim=True) + 1e-6
-        normalized_emb = (embeddings - mean) / std
-        
-        return self.test(normalized_emb)
+        if embeddings.shape[0] < 2:
+            return torch.tensor(0.0, device=embeddings.device, requires_grad=True)
 
-def sigreg_loss(embeddings):
-    """Wrapper function for backward compatibility if needed"""
-    loss_fn = SIGRegLoss()
-    # Ensure it's on the same device
-    loss_fn = loss_fn.to(embeddings.device)
-    return loss_fn(embeddings)
+        return self.test(embeddings)
 
-def total_sigreg_loss(model_output: dict):
-    l1 = sigreg_loss(model_output['r_cross_a'])
-    l2 = sigreg_loss(model_output['r_cross_b'])
-    l3 = sigreg_loss(model_output['r_uni_a'])
-    l4 = sigreg_loss(model_output['r_uni_b'])
-    
+
+def total_sigreg_loss(model_output: dict, sigreg_fn: SIGRegLoss):
+    if 'l_sigreg' in model_output:
+        return model_output['l_sigreg']
+
+    l1 = sigreg_fn(model_output['r_cross_a'])
+    l2 = sigreg_fn(model_output['r_cross_b'])
+    l3 = sigreg_fn(model_output['r_uni_a'])
+    l4 = sigreg_fn(model_output['r_uni_b'])
+
     return (l1 + l2 + l3 + l4) / 4.0

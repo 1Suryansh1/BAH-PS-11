@@ -7,6 +7,9 @@ def info_nce_loss(embeddings_a: torch.Tensor,
     """
     Symmetric InfoNCE (NT-Xent) loss for cross-modal alignment.
     """
+    embeddings_a = F.normalize(embeddings_a, dim=-1)
+    embeddings_b = F.normalize(embeddings_b, dim=-1)
+
     # Similarity matrix (B, B) — symmetric
     sim = (embeddings_a @ embeddings_b.T) / temperature
     
@@ -25,7 +28,9 @@ def cosine_alignment_loss(embeddings_a: torch.Tensor,
     """
     Direct cosine similarity alignment between paired embeddings.
     """
-    cos_sim = (embeddings_a * embeddings_b).sum(dim=-1)  # (B,)
+    a = F.normalize(embeddings_a, dim=-1)
+    b = F.normalize(embeddings_b, dim=-1)
+    cos_sim = (a * b).sum(dim=-1)  # (B,)
     return (1 - cos_sim).mean()
 
 def total_retrieval_loss(model_output, lambda_cross=1.0, lambda_uni=0.5):
