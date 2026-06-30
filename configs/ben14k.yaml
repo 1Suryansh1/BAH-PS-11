@@ -1,0 +1,42 @@
+model:
+  backbone_checkpoint: "./pretrained_weights/copernicus_fm/CopernicusFM_ViT_base_varlang_e100.pth"
+  freeze_mode: "lora"          # 'full', 'lora', or 'last4'
+  predictor_depth: 6           # optimal per CR-JEPA Table 3
+  retrieval_dim: 256
+  mask_ratio: 0.50             # optimal per CR-JEPA Table 3
+
+data:
+  dataset_name: "BigEarthNet"
+  root_dir: "./data/BigEarthNet-MM"
+  img_size: 224                # CR-JEPA Section 4.3: 224x224
+  modality_a: "S1"
+  modality_b: "S2_BEN_10"
+  batch_size: 64
+  num_workers: 4               # Lowered to 4 to avoid Kaggle DataLoader warnings/throttling
+
+training:
+  epochs: 60                  # Reduced from 100 to 50 to fit Kaggle's session runtime
+  optimizer: "adamw"
+  lr: 1e-4                     # Slightly increased learning rate for faster convergence over fewer epochs
+  weight_decay: 1e-4
+  warmup_epochs: 5             # Scaled down proportionally with epochs
+  scheduler: "cosine"
+  
+  # Loss weights
+  loss_weights:
+    lambda_pred: 1.0
+    lambda_retr: 1.0
+    lambda_sigreg: 0.01
+  
+  # NCE temperature
+  temperature: 0.07
+
+retrieval:
+  index_type: "IVFFlat"        # or "IVFPQ" for compressed index
+  n_list: 100                  # number of Voronoi cells in FAISS IVF
+  top_k: 10                    # retrieve top-10, then slice top-5
+
+logging:
+  use_wandb: true
+  project: "copfm-retrieval"
+  save_every: 20               # Save checkpoint every 5 epochs now that total epochs is 50

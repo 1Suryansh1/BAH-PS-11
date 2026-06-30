@@ -1,0 +1,42 @@
+# Python compilation cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+*.env
+
+# Large datasets and caches (outside or local BEN folders)
+BEN_14k/
+data/
+*.npz
+test_features.npz
+test_coordinates.json
+
+# Model weights
+*.pth
+epoch_85.pth
+*.pt
+*.h5
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# IDE configuration files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp

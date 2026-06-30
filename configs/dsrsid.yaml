@@ -1,0 +1,40 @@
+model:
+  backbone_checkpoint: "./pretrained_weights/copernicus_fm/CopernicusFM_ViT_base_varlang_e100.pth"
+  freeze_mode: "lora"
+  predictor_depth: 6
+  retrieval_dim: 256
+  mask_ratio: 0.50
+
+data:
+  dataset_name: "DSRSID"
+  root_dir: "./data/DSRSID"
+  img_size: 224
+  modality_a: "PAN"
+  modality_b: "MS4"
+  batch_size: 64
+  num_workers: 8
+
+training:
+  epochs: 50
+  optimizer: "adamw"
+  lr: 1e-4
+  weight_decay: 1e-4
+  warmup_epochs: 5
+  scheduler: "cosine"
+  
+  loss_weights:
+    lambda_pred: 1.0
+    lambda_retr: 1.0
+    lambda_sigreg: 0.01
+  
+  temperature: 0.07
+
+retrieval:
+  index_type: "IVFFlat"
+  n_list: 100
+  top_k: 10
+
+logging:
+  use_wandb: true
+  project: "copfm-retrieval"
+  save_every: 10
