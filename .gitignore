@@ -1,7 +1,0 @@
-BEN_14k/
-demo_output/
-__pycache__/
-*.pth
-*.pt
-*.ckpt
-*.zip
