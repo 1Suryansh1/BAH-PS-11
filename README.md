@@ -1,4 +1,4 @@
-# Copernicus Foundation Model Cross-Modal Retrieval Dashboard (CopFM-LoRA)
+# Copernicus Foundation Model Cross-Modal Retrieval Dashboard (CopFM-JEPA)
 
 An interactive, state-of-the-art web application and deep learning pipeline designed to perform same-modal and cross-modal remote sensing image retrieval on the **BigEarthNet-MM** dataset. By utilizing Parameter-Efficient Fine-Tuning (PEFT) with **LoRA (Low-Rank Adaptation)** on the **Copernicus Sentinel Foundation Model**, CopFM-LoRA aligns Sentinel-1 Synthetic Aperture Radar (SAR) backscatter profiles with Sentinel-2 Multi-Spectral Optical imagery embeddings in a joint representation space.
 
@@ -17,7 +17,7 @@ Its CopFM-JEPA !
 
 * **Cross-Modal Retrieval**: Search Sentinel-1 (SAR) queries to retrieve matching Sentinel-2 (Optical) scenes, and vice versa.
 * **Interactive GIS Map**: Powered by Leaflet.js. Click on any coordinates or search globally (via Nominatim) to snap to the nearest database patch and trigger instant similar-scene retrieval.
-* **SOTA Benchmarks Standings**: A premium, light-mode white card modal comparing the performance of **14 state-of-the-art foundation models** (e.g. CR-JEPA, X-JEPA, SatMAE, SkySense, CROMA). **CopFM-LoRA** is highlighted in gold and ranks **#2🥈 overall** in cross-modal retrieval performance.
+* **SOTA Benchmarks Standings**: A premium, light-mode white card modal comparing the performance of **14 state-of-the-art foundation models** (e.g. CR-JEPA, X-JEPA, SatMAE, SkySense, CROMA). **CopFM-JEPA** is highlighted in gold and ranks **#2🥈 overall** in cross-modal retrieval performance.
 * **Detailed Latency Split**: Tracks execution speeds on each search:
   * **API Roundtrip Latency** (Network overhead)
   * **Model Inference Latency** (Live deep learning feature extraction)
