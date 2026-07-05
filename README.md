@@ -4,6 +4,15 @@ An interactive, state-of-the-art web application and deep learning pipeline desi
 
 ---
 
+## LIVE RUN !!! \
+
+https://www.kaggle.com/code/suryansh10100/copfm-jepa 
+
+OUR LIVE BEN-14K BENCHMARK RESULTS  ! 
+
+Its CopFM-JEPA !
+
+
 ## 🚀 Key Features
 
 * **Cross-Modal Retrieval**: Search Sentinel-1 (SAR) queries to retrieve matching Sentinel-2 (Optical) scenes, and vice versa.
